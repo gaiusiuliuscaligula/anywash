@@ -2,20 +2,25 @@ import requests
 import json
 import pandas as pd
 import os
+import logging
 from datetime import datetime, timedelta
 from google.cloud import bigquery
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Читаем Google Credentials из GitHub Secrets (переменной окружения)
 gcp_credentials = os.getenv("GCP_SERVICE_ACCOUNT")
 
-# Записываем креды во временный файл (т.к. BigQuery требует файл)
+# Записываем креды во временный файл (BigQuery требует файл)
 if gcp_credentials:
     creds_path = "/tmp/gcp_credentials.json"
     with open(creds_path, "w") as f:
         f.write(gcp_credentials)
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
+    logging.info("✅ GCP Credentials загружены.")
 else:
-    print("❌ Ошибка: GOOGLE_APPLICATION_CREDENTIALS_JSON не найден!")
+    logging.error("❌ Ошибка: GCP_SERVICE_ACCOUNT не найден!")
     exit(1)
 
 # Конфигурация API UIS
@@ -53,11 +58,15 @@ def get_calls_report(date_from, date_till):
         response = requests.post(UIS_API_URL, headers=headers, json=payload)
 
         if response.status_code != 200:
-            print(f"❌ Ошибка API: {response.status_code} {response.text}")
+            logging.error(f"❌ Ошибка API: {response.status_code} {response.text}")
             return []
 
-        result = response.json()
-        data = result.get("result", {}).get("data", [])
+        try:
+            result = response.json()
+            data = result.get("result", {}).get("data", [])
+        except json.JSONDecodeError:
+            logging.error("❌ Ошибка парсинга JSON из API UIS!")
+            return []
 
         if not data:
             break  # Данные закончились
@@ -65,6 +74,7 @@ def get_calls_report(date_from, date_till):
         calls.extend(data)
         offset += limit
 
+    logging.info(f"✅ Получено {len(calls)} звонков.")
     return calls
 
 # Функция загрузки данных в BigQuery
@@ -75,19 +85,21 @@ def upload_to_bigquery(data):
     df = pd.DataFrame(data)
 
     if df.empty:
-        print("⚠️ Нет данных для загрузки в BigQuery.")
+        logging.warning("⚠️ Нет данных для загрузки в BigQuery.")
         return
 
-    df["start_time"] = pd.to_datetime(df["start_time"])
-    df["finish_time"] = pd.to_datetime(df["finish_time"])
+    df["start_time"] = pd.to_datetime(df["start_time"], errors="coerce")
+    df["finish_time"] = pd.to_datetime(df["finish_time"], errors="coerce")
     df["talk_duration"] = pd.to_numeric(df["talk_duration"], errors="coerce")
 
     job_config = bigquery.LoadJobConfig(write_disposition="WRITE_APPEND", autodetect=True)
 
-    job = client.load_table_from_dataframe(df, table_ref, job_config=job_config)
-    job.result()
-
-    print(f"✅ Загружено {len(df)} записей в BigQuery ({BQ_TABLE_ID})")
+    try:
+        job = client.load_table_from_dataframe(df, table_ref, job_config=job_config)
+        job.result()
+        logging.info(f"✅ Загружено {len(df)} записей в BigQuery ({BQ_TABLE_ID}).")
+    except Exception as e:
+        logging.error(f"❌ Ошибка загрузки в BigQuery: {str(e)}")
 
 # Основная функция для GitHub Actions
 def main():
@@ -95,13 +107,13 @@ def main():
     date_from = yesterday.strftime("%Y-%m-%d 00:00:00")
     date_till = yesterday.strftime("%Y-%m-%d 23:59:59")
 
-    print(f"🔍 Запрашиваем звонки с {date_from} по {date_till}")
+    logging.info(f"🔍 Запрашиваем звонки с {date_from} по {date_till}")
     calls = get_calls_report(date_from, date_till)
 
     if calls:
         upload_to_bigquery(calls)
     else:
-        print("⚠️ Нет данных за этот день.")
+        logging.warning("⚠️ Нет данных за этот день.")
 
 # Запуск
 if __name__ == "__main__":
