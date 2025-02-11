@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 BQ_PROJECT_ID = "deep-wave-449812-r5"
 BQ_DATASET_ID = "anywash_data"
 BQ_TABLE_ID = "calls"
-UIS_TOKEN = os.getenv("UIS_TOKEN")
+UIS_TOKEN = os.getenv("6rk603f45cviuh1jkuubgb8xiwm5bxmrp3r5w6qg")
 HEADERS = {"Authorization": f"Bearer {UIS_TOKEN}"}
 
 def get_calls_report(date_from, date_till):
