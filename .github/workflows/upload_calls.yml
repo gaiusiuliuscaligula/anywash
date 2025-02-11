@@ -3,12 +3,12 @@ name: Upload Calls to BigQuery
 on:
   schedule:
     - cron: "1 0 * * *"  # Запуск каждый день в 00:01 UTC
-  workflow_dispatch:  # Возможность ручного запуска
+  workflow_dispatch:  # Возможность ручного запуска вручную
 
 jobs:
   upload:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout репозиторий
         uses: actions/checkout@v4
@@ -17,7 +17,14 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-          
+
+      - name: Проверка наличия requirements.txt
+        run: |
+          if [ ! -f requirements.txt ]; then
+            echo "requirements.txt не найден, создаем..."
+            echo -e "pandas\nrequests\ngoogle-cloud-bigquery" > requirements.txt
+          fi
+
       - name: Установка зависимостей
         run: pip install -r requirements.txt
 
@@ -34,14 +41,18 @@ jobs:
 
       - name: Создание файла ключа GCP
         run: |
-          echo '${{ secrets.GCP_CREDENTIALS_JSON }}' | base64 --decode > credentials.json
+          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > credentials.json
+          echo "Файл credentials.json создан."
 
       - name: Запуск скрипта
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           GOOGLE_APPLICATION_CREDENTIALS: credentials.json
-        run: python upload_calls.py
+        run: |
+          python upload_calls.py || { echo "Ошибка при выполнении upload_calls.py"; exit 1; }
 
       - name: Очистка файлов после выполнения
         if: always()
-        run: rm -f credentials.json
+        run: |
+          rm -f credentials.json
+          echo "Файл credentials.json удален."
