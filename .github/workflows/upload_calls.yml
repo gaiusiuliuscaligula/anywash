@@ -1,0 +1,29 @@
+name: Upload Calls to BigQuery
+
+on:
+  schedule:
+    - cron: '1 0 * * *'  # Запуск в 00:01 UTC (каждый день)
+  workflow_dispatch:  # Возможность ручного запуска
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install google-cloud-bigquery requests pandas
+
+      - name: Authenticate with Google Cloud
+        run: echo '${{ secrets.GCP_SERVICE_ACCOUNT }}' > gcp_key.json
+
+      - name: Run Script
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: gcp_key.json
+        run: python upload_calls.py
