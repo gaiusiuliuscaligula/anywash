@@ -1,72 +1,71 @@
-import requests
+import os
 import json
+import requests
 import pandas as pd
-from datetime import datetime
 from google.cloud import bigquery
+from datetime import datetime, timedelta
 
-# Конфигурация API UIS
-ACCESS_TOKEN = "6rk603f45cviuh1jkuubgb8xiwm5bxmrp3r5w6qg"
-UIS_API_URL = "https://dataapi.uiscom.ru/v2.0"
-
-# Конфигурация BigQuery
-BQ_PROJECT_ID = "your-gcp-project-id"
-BQ_DATASET_ID = "your_dataset"
+# Константы
+BQ_PROJECT_ID = "deep-wave-449812-r5"
+BQ_DATASET_ID = "anywash_data"
 BQ_TABLE_ID = "calls"
+UIS_TOKEN = os.getenv("UIS_TOKEN")
+HEADERS = {"Authorization": f"Bearer {UIS_TOKEN}"}
 
-# Функция для запроса звонков
-def get_calls_report(date_from, date_till, offset=0, limit=10000):
-    headers = {"Content-Type": "application/json"}
-    fields = ["id", "start_time", "finish_time", "virtual_phone_number", "finish_reason", "direction", "talk_duration"]
+def get_calls_report(date_from, date_till):
+    url = "https://api.uiscom.ru/calls/report/v1"
     payload = {
-        "jsonrpc": "2.0",
-        "id": "1",
-        "method": "get.calls_report",
-        "params": {
-            "access_token": ACCESS_TOKEN,
-            "date_from": date_from,
-            "date_till": date_till,
-            "offset": offset,
-            "limit": limit,
-            "fields": fields
-        }
+        "date_from": date_from,
+        "date_till": date_till,
+        "fields": ["id", "start_time", "finish_time", "virtual_phone_number", "finish_reason", "direction", "talk_duration"]
     }
-
-    response = requests.post(UIS_API_URL, headers=headers, data=json.dumps(payload))
-
+    response = requests.post(url, headers=HEADERS, json=payload)
+    
     if response.status_code == 200:
-        result = response.json()
-        return result.get("result", {}).get("data", [])
+        data = response.json()
+        if "data" in data:
+            return data["data"]
+        else:
+            print("Пустой ответ от API UIS")
+            return []
     else:
-        print(f"Ошибка API: {response.status_code} {response.text}")
+        print(f"Ошибка API UIS: {response.status_code}, {response.text}")
         return []
 
-# Функция для загрузки данных в BigQuery
 def upload_to_bigquery(data):
-    client = bigquery.Client(project=BQ_PROJECT_ID)
-    table_ref = client.dataset(BQ_DATASET_ID).table(BQ_TABLE_ID)
-
+    client = bigquery.Client()
+    table_ref = f"{BQ_PROJECT_ID}.{BQ_DATASET_ID}.{BQ_TABLE_ID}"
     df = pd.DataFrame(data)
+    
+    job_config = bigquery.LoadJobConfig(
+        write_disposition="WRITE_APPEND",
+        schema=[
+            bigquery.SchemaField("id", "STRING"),
+            bigquery.SchemaField("start_time", "TIMESTAMP"),
+            bigquery.SchemaField("finish_time", "TIMESTAMP"),
+            bigquery.SchemaField("virtual_phone_number", "STRING"),
+            bigquery.SchemaField("finish_reason", "STRING"),
+            bigquery.SchemaField("direction", "STRING"),
+            bigquery.SchemaField("talk_duration", "INTEGER"),
+        ]
+    )
+    
+    try:
+        job = client.load_table_from_dataframe(df, table_ref, job_config=job_config)
+        job.result()
+        print(f"Загружено {len(df)} строк в {table_ref}")
+    except Exception as e:
+        print(f"Ошибка загрузки в BigQuery: {e}")
 
-    if df.empty:
-        print("Нет данных для загрузки в BigQuery.")
-        return
-
-    job_config = bigquery.LoadJobConfig(write_disposition="WRITE_APPEND")
-    job = client.load_table_from_dataframe(df, table_ref, job_config=job_config)
-    job.result()
-
-    print(f"Загружено {len(df)} записей в {BQ_TABLE_ID}")
-
-# Основная функция для Cloud Functions
-def main(event, context):
-    fixed_date = datetime(2025, 2, 11)
-    date_from = fixed_date.strftime("%Y-%m-%d 00:00:00")
-    date_till = fixed_date.strftime("%Y-%m-%d 23:59:59")
-
-    print(f"Запрашиваем звонки с {date_from} по {date_till}")
-    calls = get_calls_report(date_from, date_till)
-
+if __name__ == "__main__":
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcp_key.json"
+    
+    date_yesterday = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+    calls = get_calls_report(date_yesterday, date_yesterday)
+    
     if calls:
+        print(f"Получено {len(calls)} записей")
+        print(json.dumps(calls[:5], indent=2, ensure_ascii=False))  # Вывод первых 5 записей
         upload_to_bigquery(calls)
     else:
-        print("Нет данных за этот день.")
+        print("Нет данных для загрузки")
