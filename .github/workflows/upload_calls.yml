@@ -2,57 +2,19 @@ name: Upload Calls to BigQuery
 
 on:
   schedule:
-    - cron: "5 0 * * *"  # Запуск каждый день в 00:01 UTC
-  workflow_dispatch:  # Возможность ручного запуска вручную
+    - cron: '1 0 * * *'  # Запуск в 00:01 UTC
 
 jobs:
   upload:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout репозиторий
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - name: Установка Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+      - name: Install Dependencies
+        run: pip install google-cloud-bigquery requests pandas
 
-      - name: Проверка наличия requirements.txt
-        run: |
-          if [ ! -f requirements.txt ]; then
-            echo "requirements.txt не найден, создаем..."
-            echo -e "pandas\nrequests\ngoogle-cloud-bigquery" > requirements.txt
-          fi
-
-      - name: Установка зависимостей
-        run: pip install -r requirements.txt
-
-      - name: Проверка переменных окружения
-        run: |
-          if [[ -z "${{ secrets.ACCESS_TOKEN }}" ]]; then
-            echo "Ошибка: ACCESS_TOKEN не задан!" >&2
-            exit 1
-          fi
-          if [[ -z "${{ secrets.GCP_CREDENTIALS_JSON }}" ]]; then
-            echo "Ошибка: GCP_CREDENTIALS_JSON не задан!" >&2
-            exit 1
-          fi
-
-      - name: Создание файла ключа GCP
-        run: |
-          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > credentials.json
-          echo "Файл credentials.json создан."
-
-      - name: Запуск скрипта
+      - name: Run Script
         env:
-          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-          GOOGLE_APPLICATION_CREDENTIALS: credentials.json
-        run: |
-          python upload_calls.py || { echo "Ошибка при выполнении upload_calls.py"; exit 1; }
-
-      - name: Очистка файлов после выполнения
-        if: always()
-        run: |
-          rm -f credentials.json
-          echo "Файл credentials.json удален."
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: python upload_calls.py
