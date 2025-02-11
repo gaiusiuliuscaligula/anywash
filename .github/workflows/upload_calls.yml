@@ -2,7 +2,7 @@ name: Upload Calls to BigQuery
 
 on:
   schedule:
-    - cron: "1 0 * * *"  # Запуск каждый день в 00:01 UTC (проверь свой часовой пояс)
+    - cron: "1 0 * * *"  # Запуск каждый день в 00:01 UTC
   workflow_dispatch:  # Возможность ручного запуска
 
 jobs:
@@ -21,11 +21,27 @@ jobs:
       - name: Установка зависимостей
         run: pip install -r requirements.txt
 
+      - name: Проверка переменных окружения
+        run: |
+          if [[ -z "${{ secrets.ACCESS_TOKEN }}" ]]; then
+            echo "Ошибка: ACCESS_TOKEN не задан!" >&2
+            exit 1
+          fi
+          if [[ -z "${{ secrets.GCP_CREDENTIALS_JSON }}" ]]; then
+            echo "Ошибка: GCP_CREDENTIALS_JSON не задан!" >&2
+            exit 1
+          fi
+
       - name: Создание файла ключа GCP
-        run: echo '${{ secrets.GCP_CREDENTIALS_JSON }}' > credentials.json
+        run: |
+          echo '${{ secrets.GCP_CREDENTIALS_JSON }}' | base64 --decode > credentials.json
 
       - name: Запуск скрипта
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           GOOGLE_APPLICATION_CREDENTIALS: credentials.json
         run: python upload_calls.py
+
+      - name: Очистка файлов после выполнения
+        if: always()
+        run: rm -f credentials.json
