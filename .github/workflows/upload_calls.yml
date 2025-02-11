@@ -2,7 +2,7 @@ name: Upload Calls to BigQuery
 
 on:
   schedule:
-    - cron: "1 0 * * *"  # Запуск каждый день в 00:01 UTC
+    - cron: "5 0 * * *"  # Запуск каждый день в 00:01 UTC
   workflow_dispatch:  # Возможность ручного запуска вручную
 
 jobs:
