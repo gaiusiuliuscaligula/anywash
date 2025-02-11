@@ -1,7 +1,7 @@
 import requests
 import json
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from google.cloud import bigquery
 
 # Конфигурация API UIS
@@ -9,11 +9,11 @@ ACCESS_TOKEN = "6rk603f45cviuh1jkuubgb8xiwm5bxmrp3r5w6qg"
 UIS_API_URL = "https://dataapi.uiscom.ru/v2.0"
 
 # Конфигурация BigQuery
-BQ_PROJECT_ID = "your-gcp-project-id"  # Твой GCP проект
-BQ_DATASET_ID = "your_dataset"  # Твой датасет в BigQuery
-BQ_TABLE_ID = "calls"  # Таблица, куда загружаем данные
+BQ_PROJECT_ID = "your-gcp-project-id"
+BQ_DATASET_ID = "your_dataset"
+BQ_TABLE_ID = "calls"
 
-# Функция для запроса звонков за прошлый день
+# Функция для запроса звонков
 def get_calls_report(date_from, date_till, offset=0, limit=10000):
     headers = {"Content-Type": "application/json"}
     fields = ["id", "start_time", "finish_time", "virtual_phone_number", "finish_reason", "direction", "talk_duration"]
@@ -45,25 +45,23 @@ def upload_to_bigquery(data):
     client = bigquery.Client(project=BQ_PROJECT_ID)
     table_ref = client.dataset(BQ_DATASET_ID).table(BQ_TABLE_ID)
 
-    # Преобразуем в DataFrame
     df = pd.DataFrame(data)
 
     if df.empty:
         print("Нет данных для загрузки в BigQuery.")
         return
 
-    # Загружаем в BigQuery
     job_config = bigquery.LoadJobConfig(write_disposition="WRITE_APPEND")
     job = client.load_table_from_dataframe(df, table_ref, job_config=job_config)
-    job.result()  # Дождаться завершения
+    job.result()
 
     print(f"Загружено {len(df)} записей в {BQ_TABLE_ID}")
 
 # Основная функция для Cloud Functions
 def main(event, context):
-    yesterday = datetime.utcnow() - timedelta(days=1)
-    date_from = yesterday.strftime("%Y-%m-%d 00:00:00")
-    date_till = yesterday.strftime("%Y-%m-%d 23:59:59")
+    fixed_date = datetime(2025, 2, 11)
+    date_from = fixed_date.strftime("%Y-%m-%d 00:00:00")
+    date_till = fixed_date.strftime("%Y-%m-%d 23:59:59")
 
     print(f"Запрашиваем звонки с {date_from} по {date_till}")
     calls = get_calls_report(date_from, date_till)
