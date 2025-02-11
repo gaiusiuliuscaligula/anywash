@@ -2,29 +2,39 @@ name: Upload Calls to BigQuery
 
 on:
   schedule:
-    - cron: "0 3 * * *"  # Запуск каждый день в 03:00 UTC (6:00 MSK)
-  workflow_dispatch:  # Позволяет запускать вручную
+    - cron: "0 2 * * *"  # Запуск каждый день в 02:00 UTC
+  workflow_dispatch:  # Запуск вручную
 
 jobs:
   upload_calls:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 🚀 Checkout репозиторий
+      - name: Checkout репозиторий
         uses: actions/checkout@v3
 
-      - name: 🔧 Установка Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.9"
-
-      - name: 📦 Установка зависимостей
+      - name: Установка зависимостей
         run: pip install google-cloud-bigquery pandas requests
 
-      - name: 🔄 Запуск скрипта загрузки звонков
+      - name: Проверяем секреты
+        run: |
+          if [ -z "${{ secrets.GCP_SERVICE_ACCOUNT }}" ]; then
+            echo "❌ Ошибка: GCP_SERVICE_ACCOUNT отсутствует!"
+            exit 1
+          else
+            echo "✅ GCP_SERVICE_ACCOUNT найден."
+          fi
+          if [ -z "${{ secrets.UIS_ACCESS_TOKEN }}" ]; then
+            echo "❌ Ошибка: UIS_ACCESS_TOKEN отсутствует!"
+            exit 1
+          else
+            echo "✅ UIS_ACCESS_TOKEN найден."
+          fi
+
+      - name: Запуск скрипта
         env:
-          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
           UIS_ACCESS_TOKEN: ${{ secrets.UIS_ACCESS_TOKEN }}
-          BQ_PROJECT_ID: ${{ secrets.BQ_PROJECT_ID }}
-          BQ_DATASET_ID: ${{ secrets.BQ_DATASET_ID }}
+          BQ_PROJECT_ID: "your-gcp-project-id"
+          BQ_DATASET_ID: "your_dataset"
         run: python upload_calls.py
